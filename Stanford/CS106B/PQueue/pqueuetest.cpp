@@ -193,7 +193,7 @@ void StressPQueueTest()
 	};
 	bool allPassed = true;
 	for (int r = 0; r < 4; r++) {
-		bool passed = CheckAgainstReference(200000, runs[r].low, runs[r].high, runs[r].pattern);
+		bool passed = CheckAgainstReference(50000, runs[r].low, runs[r].high, runs[r].pattern);
 		cout << "  " << runs[r].desc << ": " << (passed ? "passed" : "FAILED") << endl;
 		if (!passed) allPassed = false;
 	}

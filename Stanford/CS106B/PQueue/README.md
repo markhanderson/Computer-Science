@@ -23,7 +23,7 @@ make check        # all tests on all four, under AddressSanitizer/UBSan
 ## Changes to the starter project
 
 - **`pqueue.h`**: the handout's workflow is to paste a different private section into the header each time you switch implementations. Instead, the header contains all four private sections, and `#if` picks one based on a `PQ_VECTOR`, `PQ_LIST`, `PQ_CHUNK` or `PQ_HEAP` flag that the Makefile sets. With no flag set, you get the heap.
-- **`pqueuetest.cpp`**: the intentional dequeue-from-empty error was checked for every implementation and then commented out, as the test asks. A new `StressPQueueTest` checks 200,000-operation random runs against `std::priority_queue`. Those runs cover heavy duplicates, negative values, and long increasing or decreasing runs.
+- **`pqueuetest.cpp`**: the intentional dequeue-from-empty error was checked for every implementation and then commented out, as the test asks. A new `StressPQueueTest` checks 50,000-operation random runs against `std::priority_queue`. Those runs cover heavy duplicates, negative values, and long increasing or decreasing runs.
 - **`main.cpp`**: the driver wasn't in the starter files I had, so this is a new one.
 - **`cs106lib/`**: small stand-ins for the CS106 library headers (`genlib.h`, `simpio.h`, `random.h`, `strutils.h`, `disallowcopy.h`), so the project builds with a standard C++ compiler. To use the real CS106 libraries, drop this folder.
 

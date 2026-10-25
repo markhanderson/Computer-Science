@@ -1,0 +1,247 @@
+CS106B Assignment #6: Priority Queue -- Write-up
+================================================
+
+The original course worksheet wasn't among my files, so this write-up
+covers what the handout's Task 4 asks for: timing and memory results for
+all four implementations, and the time/space tradeoffs they show.
+
+
+HOW THE NUMBERS WERE MEASURED
+-----------------------------
+
+Machine: a cloud Linux container on an Intel Xeon @ 2.80GHz (1 MB L2 per
+core, 33 MB shared L3), compiled with g++ 13.3 -O2. Every number below is
+the median of 3 runs of the starter performance.cpp. The absolute times
+will differ on another computer, but the growth rates should not.
+
+The trials work like this:
+  - enqueue/dequeue: fill a pqueue with N random values in 1..N, then time
+    1000 enqueues of random values in 1..2N, then 1000 dequeueMax calls.
+    The result is the average time per operation in microseconds (usecs).
+  - pqsort: enqueue N values, then dequeue all N. Three inputs are timed:
+    random, already sorted (increasing) and reverse sorted (decreasing).
+    The result is the total time in milliseconds (msecs).
+  - memory: bytesUsed() after N random enqueues.
+
+Caveat: times under about 1 usec per operation are close to the
+resolution of clock(), so small differences there are noise. That's why
+the heap's enqueue column bounces around instead of rising smoothly.
+
+The vector and list weren't run at N = 1,000,000. Their sort is O(N^2), so
+scaling up from N = 80,000 predicts about 9 minutes for the vector and
+over 2 hours for the list.
+
+
+RESULTS
+-------
+
+Unsorted vector
+       N   enqueue   dequeue   sort random   sort sorted   sort reverse   memory
+                     (usecs)     (msecs)       (msecs)       (msecs)       (KB)
+   10000     0.08      9.5          48           211            82          40
+   20000     0.16     17.9         203          1050           303          81
+   40000     0.25     41.5         876          3836          1293         163
+   80000     0.04     68.2        3310         14264          4367         327
+
+Sorted linked list
+       N   enqueue   dequeue   sort random   sort sorted   sort reverse   memory
+   10000     18.8     0.02         145          0.37           331         160
+   20000     49.5     0.07         798          0.78          1853         320
+   40000    185.7     0.05        4878          2.9          12882         640
+   80000   1590.6     0.07       54563         12.3         122629        1280
+
+Sorted chunklist (MaxElemsPerBlock = 64)
+       N   enqueue   dequeue   sort random   sort sorted   sort reverse   memory
+   10000     0.19     0.01         1.4          0.52           3.6          61
+   20000     0.51     0.01         6.3          1.1           23.5         123
+   40000     1.27     0.01        38.2          3.3          110.8         243
+   80000     2.94     0.01       199.4          4.8          419.2         491
+ 1000000   167.9      0.01     127624          66.7         251450        6111
+
+Heap
+       N   enqueue   dequeue   sort random   sort sorted   sort reverse   memory
+   10000     0.09     0.10         0.94         0.63          0.58          40
+   20000     0.18     0.09         2.0          1.6           1.2           81
+   40000     0.22     0.08         4.2          2.7           2.5          163
+   80000     0.07     0.14        11.6          8.5           7.6          327
+ 1000000     0.07     0.26       174.4         94.2          87.3         5242
+
+Chunklist block-size experiment (N = 50,000)
+   MaxElems  enqueue   dequeue   sort random   sort sorted   sort reverse   memory
+          4     33.9     0.02        1479          2.6          6269         534
+         16      7.1     0.01         282          1.4           898         352
+         64      1.6     0.01          63          3.2           163         303
+        256      0.33     0.01          13          8.7            34         273
+       1024      0.53     0.03          21         28.0           8.5         263
+
+
+BIG-O SUMMARY
+-------------
+
+                  enqueue            dequeueMax     pqsort of N     memory per element
+  unsorted vector  O(1) amortized     O(N)           O(N^2)          4 bytes (+ up to 2x slack)
+  sorted list      O(N)               O(1)           O(N^2)          16 bytes
+  chunklist        O(N/k + k)         O(k)           O(N^2/k)        ~6 bytes at k = 64
+  heap             O(log N)           O(log N)       O(N log N)      4 bytes (+ up to 2x slack)
+
+(k = MaxElemsPerBlock. For the chunklist the hidden constants are small:
+the dequeue shift is at most k-1 moves, and a block is skipped by looking
+at only one element.)
+
+
+ANALYSIS
+--------
+
+1. Do the measurements match the expected big-O?
+
+Yes, wherever the times are large enough to measure.
+
+  - Vector: enqueue is a constant ~0.1 usec at every size. Dequeue roughly
+    doubles each time N doubles (9.5 -> 17.9 -> 41.5 -> 68.2), which is
+    O(N). Random-input sort time goes up about 4x each time N doubles
+    (48 -> 203 -> 876 -> 3310), which is O(N^2).
+
+  - List: dequeue is flat and tiny, which is O(1). Enqueue should double
+    each time N doubles, but it goes up 2.6x, 3.8x and then 8.6x. The
+    algorithm is still O(N); the extra slowdown is the memory cache. The
+    list's 16-byte cells are allocated in random order, so following
+    next pointers jumps all over memory. At N = 80,000 the list is
+    1.28 MB, bigger than this processor's 1 MB per-core L2 cache, so
+    nearly every step of the walk becomes a slow memory access. The
+    list's sort ratios (5.5x, 6.1x, 11.2x) are worse than O(N^2)'s 4x for
+    the same reason.
+
+  - Chunklist: enqueue is still O(N), but each step skips a block of 64
+    elements, so it is far faster than the list. At N = 80,000 it takes
+    2.9 usecs versus the list's 1590 usecs, a gap of more than 500x. The
+    64x comes from skipping whole blocks. The rest comes from memory
+    locality: the walk reads 1,250 blocks instead of 80,000 scattered
+    cells, and each insert shifts elements inside one contiguous array,
+    which is cache-friendly. Dequeue is a flat 0.01 usec. Random sort
+    grows about 4-5x per doubling of N, so it really is O(N^2), but with
+    a small enough constant to handle 1,000,000 elements in about 2
+    minutes.
+
+  - Heap: dequeue grows slowly (0.10 usec at 10,000, 0.26 usec at
+    1,000,000), which fits O(log N). Enqueue looks flat. That is expected
+    for these trials: a random value usually stops after bubbling up only
+    a level or two, so the average enqueue is effectively O(1) even
+    though the worst case is O(log N). Sort grows a bit faster than N:
+    11.6 msec at 80,000 and 174 msec at 1,000,000 is 15x the time for
+    12.5x the elements. That fits O(N log N).
+
+2. How do sorted and reverse-sorted inputs change things?
+
+The two list-based implementations care a lot about input order, because
+input order controls where each insert lands. Increasing input makes
+every new value the max, so it goes at the very front. Decreasing input
+makes every new value the min, so it goes at the very end.
+
+  - List: increasing input is the best case. Each enqueue stops at the
+    head, so the whole sort is O(N): 12 msec at N = 80,000. Decreasing
+    input is the worst case. Each enqueue walks the whole list, so it is
+    O(N^2): 123 seconds, 10,000 times slower on the same data.
+
+  - Chunklist: the same pattern, just milder. Increasing input is cheap.
+    The new value goes into the first block and only that block's
+    elements shift. Decreasing input walks every block to the end, which
+    makes it this implementation's worst case.
+
+  - Vector: the unusual case. Sorted input should be the friendliest,
+    because the max is always the last element and removing it shifts
+    nothing. Instead it was the slowest of the three (14.3 s versus 3.3 s
+    for random at N = 80,000). The likely reason: when the data is
+    increasing, every element the scan looks at is a new maximum, so the
+    "remember this as the max" branch runs on every iteration. That is
+    an extra bounds-checked Vector access and two stores per element. In
+    random data a new maximum turns up only a handful of times per scan.
+    Reverse-sorted data puts the max at index 0, so the scan never
+    updates. But removeAt(0) then shifts the entire vector, which lands
+    it in between.
+
+  - Heap: insensitive to input order. Sorted and reverse inputs were
+    actually somewhat faster than random. On increasing input every new
+    value bubbles all the way to the root, so each enqueue does the full
+    log N work. But the comparisons follow a predictable pattern, which
+    the processor's branch prediction handles well. The heap has no bad
+    input: every operation is O(log N) in the worst case.
+
+3. Memory
+
+At N = 1,000,000:
+  - The vector and heap use 5.2 MB. Both store a bare int array that
+    doubles when it fills, so the array has between 0% and 50% unused
+    capacity. Here it is 1,310,720 slots for 1,000,000 elements, 24%
+    unused. Even so, these are the most compact of the four.
+  - The chunklist uses 6.1 MB, about 6.1 bytes per element. Each 64-slot
+    block costs 272 bytes, and on random input the blocks average about
+    69% full. That 69% (ln 2) is the classic steady-state result for
+    structures that split full nodes in half, such as B-trees. A block
+    starts half full after a split and fills up until it splits again.
+  - The list would use 16 MB: a 4-byte int, 4 bytes of padding and an
+    8-byte pointer per cell, so 75% of the memory is overhead. (Memory
+    after the trials' mix of enqueues and dequeues was essentially
+    identical to memory after the initial fill for all four, so only the
+    first number is shown in the tables.)
+
+4. Chunklist block size
+
+The experiment shows the tradeoff the handout describes:
+  - Small blocks (k = 4) behave almost like the plain list. There are
+    12,500 blocks to walk, and each block's 16 bytes of pointer and count
+    overhead is as big as its data: 534 KB for 50,000 ints.
+  - Bigger blocks mean fewer steps in the walk and less overhead per
+    element. Memory fell to 263 KB at k = 1024, approaching the 200 KB
+    that the raw ints take.
+  - But every insert and dequeue shifts up to k elements. At k = 1024,
+    increasing input, which always inserts at the front of the first
+    block, became 9x slower than at k = 64. Dequeue started creeping up
+    too.
+  - Each enqueue walks about N/k blocks and shifts about k elements. That
+    cost is lowest when k is about the square root of N. For N = 50,000
+    that is about 220, and the best random-input result was indeed at
+    k = 256.
+  - k = 64 is a reasonable all-round default for the sizes in these
+    trials. A chunklist that wants to stay fast as N grows would have to
+    grow k along with it, or, better, add an index over the blocks.
+    Adding an index over the blocks is essentially how a skip list or a
+    B-tree works.
+
+5. Which implementation is best?
+
+The heap, by a wide margin, for general use. It is the only one with no
+O(N) operation. It sorted 1,000,000 random values in 0.17 seconds,
+compared with about 2 minutes for the chunklist and hours for the other
+two. It is also the most compact of the four along with the vector. The
+code is short. The only subtle parts are the index arithmetic and
+remembering to swap with the larger child.
+
+The others still have niches:
+  - Unsorted vector: if enqueues vastly outnumber dequeues (for example,
+    collect everything and dequeue the max only once or twice), it has
+    the cheapest enqueue and the simplest code.
+  - Sorted list: if values mostly arrive in increasing order, every
+    enqueue is O(1), and dequeue is always O(1). It also keeps everything
+    fully sorted, so you could walk the whole list in order, which a heap
+    can't do without destroying itself.
+  - Chunklist: keeps the list's fully sorted order and constant-time
+    dequeue, with far better speed and memory. But it is the most complex
+    of the four to get right. Block splits, empty blocks and the boundary
+    between blocks are all special cases. It beats the heap only on
+    dequeue, by a fraction of a microsecond.
+
+
+TESTING
+-------
+
+All four implementations pass the starter tests and the added
+StressPQueueTest. The stress test does long random sequences of enqueue
+and dequeueMax (heavy duplicates, negative values, long increasing and
+decreasing runs). It checks every dequeued value and the size after
+every operation against std::priority_queue. "make check" runs everything
+under AddressSanitizer and UndefinedBehaviorSanitizer. With those on,
+any out-of-bounds access, use of freed memory or leak (including leaks
+from a destructor that misses a block) stops the run with a report. All
+four ran clean. The chunklist was also tested at block sizes 2, 3, 5, 64
+and 1024, since small blocks hit the split and free-empty-block paths on
+almost every operation.

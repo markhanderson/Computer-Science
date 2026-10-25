@@ -1,0 +1,206 @@
+CS106B Assignment #5: Sorting Lab -- Write-up
+=============================================
+
+NOTE BEFORE SUBMITTING: the timing tables below are placeholders. Run
+sortdetective.cpp (linked with mysterysort.lib) on your own machine and
+paste in your numbers. Your absolute times will differ from anyone else's,
+but the growth ratios and patterns described here are what you should see.
+Delete this note when you're done.
+
+
+PART A -- SORT DETECTIVE
+------------------------
+
+Summary of conclusions
+
+    MysterySort1 = Insertion sort
+    MysterySort2 = Quicksort (first element of subvector as pivot)
+    MysterySort3 = Merge sort
+    MysterySort4 = Selection sort
+    MysterySort5 = Bubble sort
+
+Method
+
+I ran two kinds of experiments (the program is sortdetective.cpp).
+
+1. Timing. Each sort was run on sorted, reverse-sorted and random input of
+   sizes N = 1000, 2000, 4000, 8000 and 16000. Each measurement repeats the
+   sort on a fresh copy of the input until at least 0.5 seconds of CPU time
+   has gone by, then divides by the number of repetitions. The cost of
+   copying the input is timed separately and subtracted. Because N doubles
+   from row to row, the ratio between rows shows the growth rate: about 2
+   for O(N), a bit more than 2 for O(N log N), and about 4 for O(N^2).
+
+2. Mid-sort snapshots. Each sort was given a random permutation of the
+   values 0..99999 and stopped early with the maxSecs argument. Because
+   every value appears once, a value that equals its index is in its final
+   sorted position. I looked at the first and last 100 values of the
+   partially sorted vector.
+
+Timing data (ms per sort; "x" = ratio to the previous N)
+
+  [PASTE YOUR THREE TABLES FROM sortdetective HERE]
+
+  Sorted input:      N     Sort1      Sort2      Sort3      Sort4      Sort5
+                  1000
+                  ...
+  Reverse input:  ...
+  Random input:   ...
+
+Step 1: separate the O(N log N) sorts from the O(N^2) sorts
+
+On random input, Sorts 1, 4 and 5 roughly quadruple in time each time N
+doubles (ratios near 4), so they are quadratic. Sorts 2 and 3 only
+slightly more than double (ratios a bit over 2), and are tens to hundreds
+of times faster at N = 16000, so they are the two O(N log N) algorithms:
+merge sort and quicksort. Sorts 1, 4 and 5 are therefore insertion,
+selection and bubble sort in some order.
+
+Step 2: merge sort vs. quicksort (Sorts 2 and 3)
+
+Sort 3's time is essentially the same on sorted, reversed and random
+input, and grows like N log N in every case. Sort 2 is fast on random
+input, but on sorted and on reverse-sorted input its time quadruples each
+time N doubles. That is the classic worst case of a quicksort that uses
+the first element as its pivot: on already-ordered data the pivot is
+always the smallest (or largest) element, so every partition splits off
+just one element and the sort degenerates to O(N^2). Merge sort always
+splits in half and has no such bad case.
+
+The snapshots agree. Stopped early, Sort 3's data consists of sorted runs:
+the front of the vector is in increasing order but skips values (e.g.
+0 2 4 5 8 9 13 ...), which is what you get after the left half has been
+merged together from its two sorted quarters but has not yet been merged
+with the right half. The values are in order relative to each other but
+not in their final positions. Sort 2's snapshot instead shows large
+stretches with every value in its final position (0 1 2 3 ...) next to
+regions that are completely unordered: finished partitions next to
+partitions not yet processed, which is how quicksort makes progress.
+
+So Sort 2 = quicksort and Sort 3 = merge sort.
+
+Step 3: identify the three quadratic sorts (Sorts 1, 4, 5)
+
+Sort 4 takes about the same time no matter how the input is arranged; it
+is just as slow on sorted input as on random input. Selection sort always
+scans the whole unsorted part to find the minimum, so its number of
+comparisons is N(N-1)/2 for any input. Insertion and bubble sort (with
+the early-exit check) both finish sorted input in a single linear pass,
+so neither would behave like this.
+
+Sorts 1 and 5 are both extremely fast on sorted input, and their times
+there only double as N doubles: they are O(N) in the best case. That
+matches insertion sort (each element is compared once to its neighbor and
+stays put) and bubble sort (one pass with no swaps, then it stops).
+
+To tell them apart:
+
+  - On random input, Sort 5 is the slowest of all the sorts. Bubble sort
+    does roughly the same number of comparisons as selection sort, but
+    also does up to one swap per comparison, while insertion sort on
+    random data only does about half the comparisons of selection sort
+    (an element stops moving as soon as it finds its place). Sort 1 is
+    the fastest of the three quadratic sorts on random input, as expected
+    for insertion sort.
+
+  - On reverse-sorted input, Sort 1 takes about twice as long as on
+    random input: every element must be shifted all the way to the front,
+    which is insertion sort's worst case.
+
+  - The snapshots are decisive. Sort 1's first 100 values are in
+    increasing order but are not the smallest values in the whole vector
+    (e.g. 31 50 82 203 ...), while the end of the vector is still in its
+    original random order. That is insertion sort: the front is a sorted
+    prefix made of the elements seen so far, and everything behind it is
+    untouched.
+
+    Sort 5's last values are exactly the largest values in their final
+    positions (... 99994 99995 ... 99999), while the front is only
+    loosely ordered. Each pass of bubble sort carries the largest
+    remaining value to the end, so the sorted region grows from the back.
+
+    Sort 4's first values are exactly 0 1 2 3 ... (the smallest values in
+    their final positions) followed by unordered data. Selection sort
+    places the next smallest value at the front on every pass. Unlike
+    insertion sort, the sorted prefix contains the globally smallest
+    values; unlike bubble sort, the sorted region is at the front.
+
+So Sort 1 = insertion sort, Sort 4 = selection sort, Sort 5 = bubble sort.
+
+
+PART B -- GENERIC SORT: HEAPSORT
+--------------------------------
+
+My Sort template (sort.cpp) uses heapsort. It treats the vector as a
+binary max-heap stored in the array, where the children of index i are at
+2i+1 and 2i+2. It works in two phases:
+
+  1. Heapify: starting from the last internal node and working back to the
+     root, sift each node down so that every parent is >= its children.
+     When this finishes, the largest element is at index 0.
+
+  2. Sort-down: swap the root (the current maximum) with the last element
+     of the heap, shrink the heap by one, and sift the new root down to
+     restore the heap. Repeat until the heap has one element.
+
+Running time. Building the heap bottom-up is O(N) (most nodes are near the
+bottom and sift only a short distance). Each of the N-1 sort-down steps
+sifts through at most log2 N levels, so the total is O(N log N). This
+bound holds in the best, average and worst case; there is no bad input
+like quicksort's sorted case. The only "best case" is an input of all
+equal values, where every sift stops immediately and the sort is O(N).
+
+Memory. Heapsort sorts in place using O(1) extra space and no recursion.
+Merge sort needs an O(N) temporary buffer, and quicksort uses O(log N) to
+O(N) stack space for recursion.
+
+Comparison with other O(N log N) sorts. In practice heapsort is usually
+slower than a good quicksort by a constant factor (often 2-3x on random
+data), mainly because it jumps around the array (from i to 2i+1), which is
+unfriendly to the CPU cache, and because it does about 2 comparisons per
+level while sifting. It does about as many comparisons as merge sort, a
+little more. Its advantages are the guaranteed worst case and the lack of
+extra memory, which is why Introsort (used by many C++ std::sort
+implementations) falls back to heapsort when quicksort's recursion gets too
+deep.
+
+Mix of operations. Each sift level does up to two calls to the comparison
+function (pick the larger child, then compare it to the element being
+sifted) and one element copy. The total is roughly 2N log2 N comparisons
+and N log2 N copies. Because the comparisons go through a function
+pointer, with a costly callback (like summing a Set) the comparisons
+dominate.
+
+Stability. Heapsort is not stable: moving the root to the end can carry an
+element past other elements that compare equal to it.
+
+Optimization. Instead of swapping the sifted element with its larger
+child at each level (3 copies per level), SiftDown holds the element
+aside, moves each larger child up into the "hole", and writes the element
+once at the end (about 1 copy per level). The heap is also built bottom-up
+(Floyd's method) instead of inserting elements one at a time, which makes
+that phase O(N) instead of O(N log N).
+
+Code complexity. The code is short: about 15 lines for SiftDown and 10 for
+Sort. The trickiest parts are the index arithmetic for children and
+checking whether the right child exists.
+
+Strengths: guaranteed O(N log N), in place, no recursion, no bad inputs.
+Weaknesses: not stable, not adaptive (an already-sorted input still takes
+the full N log N time), and slower in practice than quicksort because of
+poor memory locality.
+
+Comparison callbacks. LengthThenAlphaCmp orders strings by length and
+falls back to OperatorCmp for alphabetical order on ties. SetSumCmp sums
+each Set<int> with an iterator and compares the sums with OperatorCmp. The
+test code in sort.cpp sorts ints (edge cases of size 0-5, 10000 sorted,
+reversed, random and all-equal values, with a check that no elements were
+lost or duplicated, and a client-supplied descending callback), doubles,
+strings (default and by length) and sets of ints (by sum).
+
+References
+  Wikipedia, "Heapsort", http://en.wikipedia.org/wiki/Heapsort
+  R. W. Floyd, "Algorithm 245: Treesort 3", Communications of the ACM
+    7(12), 1964.
+  Robert Sedgewick, Algorithms in C++, 3rd ed., Section 9.4.
+  I wrote the code myself from the algorithm descriptions above.
